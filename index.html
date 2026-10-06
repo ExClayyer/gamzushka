@@ -1,0 +1,850 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Santa's Snow Blaster: Physics Edition</title>
+    <style>
+      @import url("https://fonts.googleapis.com/css2?family=Mountains+of+Christmas:wght@700&family=Russo+One&display=swap");
+
+      body {
+        margin: 0;
+        overflow: hidden;
+        background: #000;
+        user-select: none;
+        font-family: "Russo One", sans-serif;
+      }
+
+      /* HUD */
+      #hud {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        pointer-events: none;
+        padding: 30px;
+        box-sizing: border-box;
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+      }
+      .stat {
+        background: rgba(0, 0, 0, 0.6);
+        padding: 15px 25px;
+        border-radius: 12px;
+        border-left: 4px solid #fff;
+        backdrop-filter: blur(5px);
+        transform: skewX(-10deg);
+      }
+      .stat-inner {
+        transform: skewX(10deg);
+      }
+      .label {
+        font-size: 12px;
+        color: #aaa;
+        text-transform: uppercase;
+        letter-spacing: 2px;
+        margin-bottom: 5px;
+      }
+      .val {
+        font-size: 36px;
+        color: #fff;
+        text-shadow: 0 0 10px rgba(255, 255, 255, 0.5);
+      }
+      .hp .val {
+        color: #ff4444;
+        text-shadow: 0 0 15px rgba(255, 0, 0, 0.6);
+      }
+      .ammo .val {
+        color: #44aaff;
+        text-shadow: 0 0 15px rgba(0, 150, 255, 0.6);
+      }
+
+      /* Crosshair */
+      #crosshair {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        width: 8px;
+        height: 8px;
+        border: 2px solid rgba(255, 255, 255, 0.8);
+        border-radius: 50%;
+        transform: translate(-50%, -50%);
+        transition: all 0.1s;
+      }
+      #crosshair.hit {
+        background: #ff0;
+        border-color: #ff0;
+        transform: translate(-50%, -50%) scale(2);
+      }
+
+      /* Menu */
+      #menu {
+        position: absolute;
+        inset: 0;
+        background: rgba(10, 10, 20, 0.95);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        z-index: 100;
+        pointer-events: auto;
+      }
+      h1 {
+        font-family: "Mountains of Christmas", cursive;
+        font-size: 90px;
+        color: #d4af37;
+        margin: 0;
+        text-shadow: 0 0 40px rgba(212, 175, 55, 0.3);
+        line-height: 1;
+      }
+      p {
+        color: #ccc;
+        max-width: 600px;
+        text-align: center;
+        line-height: 1.6;
+        margin: 20px 0 40px;
+        font-size: 18px;
+      }
+      .keys {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 15px;
+        margin-bottom: 40px;
+        font-size: 14px;
+        color: #888;
+      }
+      .key {
+        display: inline-block;
+        padding: 5px 12px;
+        background: rgba(255, 255, 255, 0.1);
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        border-radius: 6px;
+        color: #fff;
+        font-weight: bold;
+        margin-right: 8px;
+        min-width: 20px;
+        text-align: center;
+      }
+      button {
+        padding: 20px 70px;
+        font-family: "Mountains of Christmas", cursive;
+        font-size: 36px;
+        background: linear-gradient(to bottom, #c0392b, #8e1b1b);
+        color: #fff;
+        border: none;
+        border-radius: 50px;
+        cursor: pointer;
+        box-shadow: 0 10px 30px rgba(192, 57, 43, 0.5);
+        transition: all 0.2s;
+        text-transform: uppercase;
+        letter-spacing: 3px;
+      }
+      button:hover {
+        transform: translateY(-3px) scale(1.05);
+        box-shadow: 0 15px 40px rgba(231, 76, 60, 0.7);
+      }
+      button:active {
+        transform: translateY(0) scale(0.98);
+      }
+
+      /* Damage Overlay */
+      #dmg {
+        position: absolute;
+        inset: 0;
+        background: radial-gradient(
+          circle,
+          transparent 50%,
+          rgba(255, 0, 0, 0.6) 100%
+        );
+        opacity: 0;
+        pointer-events: none;
+        mix-blend-mode: overlay;
+        transition: opacity 0.2s;
+      }
+    </style>
+
+    <!-- Libs -->
+    <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+          "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/",
+          "cannon-es": "https://unpkg.com/cannon-es@0.20.0/dist/cannon-es.js"
+        }
+      }
+    </script>
+  </head>
+  <body>
+    <div id="menu">
+      <h1>SNOW BLASTER</h1>
+      <p>
+        Физическая симуляция защиты мастерской.<br />Снежки имеют массу и
+        инерцию. Подарки разлетаются на осколки.
+      </p>
+      <div class="keys">
+        <div>
+          <span class="key">W</span><span class="key">A</span
+          ><span class="key">S</span><span class="key">D</span> Движение
+        </div>
+        <div><span class="key">ЛКМ</span> Стрельба снегом</div>
+        <div><span class="key">SHIFT</span> Ускорение</div>
+        <div><span class="key">R</span> Перезарядка</div>
+      </div>
+      <button id="start-btn">ЗАЩИТИТЬ РОЖДЕСТВО</button>
+    </div>
+
+    <div id="hud">
+      <div class="stat hp">
+        <div class="stat-inner">
+          <div class="label">Здоровье</div>
+          <div class="val" id="hp-val">100</div>
+        </div>
+      </div>
+      <div class="stat ammo">
+        <div class="stat-inner">
+          <div class="label">Снежков</div>
+          <div class="val" id="ammo-val">∞</div>
+        </div>
+      </div>
+      <div class="stat">
+        <div class="stat-inner">
+          <div class="label">Убито</div>
+          <div class="val" id="score-val">0</div>
+        </div>
+      </div>
+    </div>
+
+    <div id="crosshair"></div>
+    <div id="dmg"></div>
+
+    <script type="module">
+      import * as THREE from "three";
+      import { PointerLockControls } from "three/addons/controls/PointerLockControls.js";
+      import * as CANNON from "cannon-es";
+
+      // --- КОНФИГ ---
+      const CFG = {
+        walkSpeed: 10,
+        runSpeed: 18,
+        snowballSpeed: 40,
+        snowballRadius: 0.15,
+        enemySpeed: 7,
+        spawnRate: 1.2,
+        gravity: -15,
+      };
+
+      // --- ФИЗИЧЕСКИЙ МИР (CANNON-ES) ---
+      const world = new CANNON.World();
+      world.gravity.set(0, CFG.gravity, 0);
+      world.broadphase = new CANNON.SAPBroadphase(world);
+      world.allowSleep = true;
+
+      // Материалы физики
+      const matGround = new CANNON.Material("ground");
+      const matSnowball = new CANNON.Material("snowball");
+      const matEnemy = new CANNON.Material("enemy");
+
+      const contactSnowGround = new CANNON.ContactMaterial(
+        matGround,
+        matSnowball,
+        { friction: 0.3, restitution: 0.5 },
+      );
+      const contactSnowEnemy = new CANNON.ContactMaterial(
+        matEnemy,
+        matSnowball,
+        { friction: 0.1, restitution: 0.8 },
+      );
+      world.addContactMaterial(contactSnowGround, contactSnowEnemy);
+
+      // --- THREE.JS SETUP ---
+      const scene = new THREE.Scene();
+      scene.background = new THREE.Color(0x050510);
+      scene.fog = new THREE.FogExp2(0x050510, 0.02);
+
+      const camera = new THREE.PerspectiveCamera(
+        75,
+        innerWidth / innerHeight,
+        0.1,
+        200,
+      );
+      const renderer = new THREE.WebGLRenderer({
+        antialias: true,
+        powerPreference: "high-performance",
+      });
+      renderer.setSize(innerWidth, innerHeight);
+      renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+      renderer.shadowMap.enabled = true;
+      renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+      document.body.appendChild(renderer.domElement);
+
+      // Свет
+      const hemi = new THREE.HemisphereLight(0x4466aa, 0x223322, 0.7);
+      scene.add(hemi);
+
+      const dir = new THREE.DirectionalLight(0xaaccff, 1.5);
+      dir.position.set(20, 40, -20);
+      dir.castShadow = true;
+      dir.shadow.mapSize.set(2048, 2048);
+      dir.shadow.camera.near = 0.5;
+      dir.shadow.camera.far = 100;
+      dir.shadow.camera.left = -50;
+      dir.shadow.camera.right = 50;
+      dir.shadow.camera.top = 50;
+      dir.shadow.camera.bottom = -50;
+      scene.add(dir);
+
+      // --- ТЕКСТУРЫ (CDN) ---
+      const texLoader = new THREE.TextureLoader();
+      const snowTex = texLoader.load(
+        "https://raw.githubusercontent.com/mrdoob/three.js/master/examples/textures/terrain/grasslight-big.jpg",
+      ); // Fallback на траву если снег не найден, но ниже сделаем шейдер
+      snowTex.wrapS = snowTex.wrapT = THREE.RepeatWrapping;
+      snowTex.repeat.set(50, 50);
+
+      // --- ОКРУЖЕНИЕ ---
+      // Физический пол
+      const groundBody = new CANNON.Body({ mass: 0, material: matGround });
+      groundBody.addShape(new CANNON.Plane());
+      groundBody.quaternion.setFromEuler(-Math.PI / 2, 0, 0);
+      world.addBody(groundBody);
+
+      // Визуальный пол
+      const groundGeo = new THREE.PlaneGeometry(200, 200, 100, 100);
+      groundGeo.rotateX(-Math.PI / 2);
+      // Процедурные неровности
+      const pos = groundGeo.attributes.position;
+      for (let i = 0; i < pos.count; i++)
+        pos.setY(i, pos.getY(i) + Math.random() * 0.3);
+      groundGeo.computeVertexNormals();
+
+      const groundMat = new THREE.MeshStandardMaterial({
+        color: 0xddeeff,
+        roughness: 0.9,
+        metalness: 0.0,
+        flatShading: true,
+      });
+      const groundMesh = new THREE.Mesh(groundGeo, groundMat);
+      groundMesh.receiveShadow = true;
+      scene.add(groundMesh);
+
+      // Елки (Instanced)
+      const treeGeo = new THREE.ConeGeometry(1.5, 6, 7);
+      treeGeo.translate(0, 3, 0);
+      const treeMat = new THREE.MeshStandardMaterial({
+        color: 0x1a3a1a,
+        flatShading: true,
+      });
+      const trees = new THREE.InstancedMesh(treeGeo, treeMat, 400);
+      trees.castShadow = true;
+      trees.receiveShadow = true;
+      const dummy = new THREE.Object3D();
+      for (let i = 0; i < 400; i++) {
+        const a = Math.random() * Math.PI * 2;
+        const r = 15 + Math.random() * 80;
+        dummy.position.set(Math.cos(a) * r, 0, Math.sin(a) * r);
+        dummy.scale.setScalar(0.8 + Math.random());
+        dummy.updateMatrix();
+        trees.setMatrixAt(i, dummy.matrix);
+
+        // Физика дерева (статический цилиндр)
+        const tb = new CANNON.Body({ mass: 0, material: matGround });
+        tb.addShape(new CANNON.Cylinder(0.5, 0.8, 6, 6));
+        tb.position.copy(dummy.position);
+        tb.position.y = 3;
+        world.addBody(tb);
+      }
+      scene.add(trees);
+
+      // --- ИГРОК ---
+      const controls = new PointerLockControls(camera, document.body);
+      const playerBody = new CANNON.Body({
+        mass: 70,
+        material: matGround,
+        fixedRotation: true,
+      });
+      playerBody.addShape(new CANNON.Sphere(0.5), new CANNON.Vec3(0, 0, 0));
+      playerBody.position.set(0, 2, 0);
+      playerBody.linearDamping = 0.9;
+      world.addBody(playerBody);
+
+      // --- СНЕЖНЫЙ БЛАСТЕР (PROCEDURAL MODEL) ---
+      const gunGroup = new THREE.Group();
+
+      // Корпус
+      const bodyGeo = new THREE.CylinderGeometry(0.08, 0.12, 0.6, 8);
+      bodyGeo.rotateX(Math.PI / 2);
+      const bodyMat = new THREE.MeshStandardMaterial({
+        color: 0xcc3333,
+        roughness: 0.3,
+        metalness: 0.2,
+      });
+      const body = new THREE.Mesh(bodyGeo, bodyMat);
+      body.position.z = -0.3;
+
+      // Резервуар со снегом
+      const tankGeo = new THREE.SphereGeometry(0.15, 16, 16);
+      const tankMat = new THREE.MeshPhysicalMaterial({
+        color: 0xffffff,
+        transmission: 0.6,
+        opacity: 0.9,
+        transparent: true,
+        roughness: 0.1,
+      });
+      const tank = new THREE.Mesh(tankGeo, tankMat);
+      tank.position.set(0, 0.15, -0.2);
+
+      // Рукоять
+      const handleGeo = new THREE.BoxGeometry(0.06, 0.18, 0.1);
+      const handleMat = new THREE.MeshStandardMaterial({
+        color: 0x222222,
+        roughness: 0.8,
+      });
+      const handle = new THREE.Mesh(handleGeo, handleMat);
+      handle.position.set(0, -0.15, -0.1);
+      handle.rotation.x = 0.3;
+
+      // Дуло
+      const nozzleGeo = new THREE.CylinderGeometry(0.06, 0.09, 0.15, 8);
+      nozzleGeo.rotateX(Math.PI / 2);
+      const nozzleMat = new THREE.MeshStandardMaterial({
+        color: 0x888888,
+        metalness: 0.8,
+        roughness: 0.2,
+      });
+      const nozzle = new THREE.Mesh(nozzleGeo, nozzleMat);
+      nozzle.position.set(0, 0, -0.65);
+
+      gunGroup.add(body, tank, handle, nozzle);
+      gunGroup.position.set(0.3, -0.3, -0.5);
+      camera.add(gunGroup);
+      scene.add(camera);
+
+      // --- СИСТЕМЫ ---
+      const snowballs = []; // { mesh, body }
+      const enemies = []; // { mesh, body, hp }
+      const debris = []; // { mesh, body, life }
+
+      // Снег (частицы)
+      const snowCount = 3000;
+      const snowGeo = new THREE.BufferGeometry();
+      const snowPos = new Float32Array(snowCount * 3);
+      for (let i = 0; i < snowCount * 3; i += 3) {
+        snowPos[i] = (Math.random() - 0.5) * 120;
+        snowPos[i + 1] = Math.random() * 40;
+        snowPos[i + 2] = (Math.random() - 0.5) * 120;
+      }
+      snowGeo.setAttribute("position", new THREE.BufferAttribute(snowPos, 3));
+      const snowSys = new THREE.Points(
+        snowGeo,
+        new THREE.PointsMaterial({
+          color: 0xffffff,
+          size: 0.15,
+          transparent: true,
+          opacity: 0.8,
+        }),
+      );
+      scene.add(snowSys);
+
+      // --- ЛОГИКА ---
+      let state = { active: false, hp: 100, score: 0, lastShot: 0 };
+      const keys = {};
+      const velocity = new THREE.Vector3();
+      const direction = new THREE.Vector3();
+
+      function shoot() {
+        if (!state.active || Date.now() - state.lastShot < 200) return;
+        state.lastShot = Date.now();
+
+        // Анимация оружия
+        gsap.to(gunGroup.position, {
+          z: -0.3,
+          duration: 0.05,
+          yoyo: true,
+          repeat: 1,
+        });
+        gsap.to(gunGroup.rotation, {
+          x: 0.3,
+          duration: 0.05,
+          yoyo: true,
+          repeat: 1,
+        });
+        gsap.to(tank.scale, {
+          x: 0.8,
+          y: 0.8,
+          z: 0.8,
+          duration: 0.05,
+          yoyo: true,
+          repeat: 1,
+        });
+
+        // Создание физического снежка
+        const radius = CFG.snowballRadius;
+        const geo = new THREE.SphereGeometry(radius, 12, 12);
+        const mat = new THREE.MeshStandardMaterial({
+          color: 0xffffff,
+          roughness: 0.8,
+        });
+        const mesh = new THREE.Mesh(geo, mat);
+        mesh.castShadow = true;
+        scene.add(mesh);
+
+        const shape = new CANNON.Sphere(radius);
+        const body = new CANNON.Body({ mass: 0.5, material: matSnowball });
+        body.addShape(shape);
+
+        // Позиция спавна = позиция дула
+        const muzzlePos = new THREE.Vector3(0, 0, -0.7);
+        muzzlePos.applyMatrix4(gunGroup.matrixWorld);
+        body.position.set(muzzlePos.x, muzzlePos.y, muzzlePos.z);
+
+        // Направление стрельбы
+        const aimDir = new THREE.Vector3();
+        camera.getWorldDirection(aimDir);
+        body.velocity.set(
+          aimDir.x * CFG.snowballSpeed,
+          aimDir.y * CFG.snowballSpeed,
+          aimDir.z * CFG.snowballSpeed,
+        );
+
+        world.addBody(body);
+        snowballs.push({ mesh, body, life: 5 });
+
+        // Звук
+        playSound(400, "sine", 0.15);
+      }
+
+      function spawnEnemy() {
+        if (enemies.length >= 25 || !state.active) return;
+
+        // Визуал
+        const group = new THREE.Group();
+        const boxGeo = new THREE.BoxGeometry(1, 1, 1);
+        const colors = [0xff0000, 0x00ff00, 0x0000ff, 0xffff00, 0xff00ff];
+        const color = colors[Math.floor(Math.random() * colors.length)];
+        const boxMat = new THREE.MeshStandardMaterial({
+          color,
+          roughness: 0.4,
+        });
+        const box = new THREE.Mesh(boxGeo, boxMat);
+        box.castShadow = true;
+
+        // Ленточка
+        const ribbonGeo = new THREE.BoxGeometry(1.05, 0.2, 1.05);
+        const ribbonMat = new THREE.MeshStandardMaterial({
+          color: 0xffd700,
+          metalness: 0.6,
+          roughness: 0.2,
+        });
+        const ribbon1 = new THREE.Mesh(ribbonGeo, ribbonMat);
+        const ribbon2 = new THREE.Mesh(ribbonGeo, ribbonMat);
+        ribbon2.rotation.y = Math.PI / 2;
+        group.add(box, ribbon1, ribbon2);
+
+        scene.add(group);
+
+        // Физика
+        const shape = new CANNON.Box(new CANNON.Vec3(0.5, 0.5, 0.5));
+        const body = new CANNON.Body({ mass: 2, material: matEnemy });
+        body.addShape(shape);
+
+        const angle = Math.random() * Math.PI * 2;
+        const r = 35 + Math.random() * 15;
+        body.position.set(Math.cos(angle) * r, 2, Math.sin(angle) * r);
+        body.linearDamping = 0.3;
+        body.angularDamping = 0.3;
+
+        world.addBody(body);
+        enemies.push({ mesh: group, body, hp: 1, color });
+      }
+
+      function createDebris(pos, color) {
+        for (let i = 0; i < 8; i++) {
+          const size = 0.1 + Math.random() * 0.2;
+          const geo = new THREE.BoxGeometry(size, size, size);
+          const mat = new THREE.MeshStandardMaterial({ color });
+          const mesh = new THREE.Mesh(geo, mat);
+          mesh.castShadow = true;
+          scene.add(mesh);
+
+          const shape = new CANNON.Box(
+            new CANNON.Vec3(size / 2, size / 2, size / 2),
+          );
+          const body = new CANNON.Body({ mass: 0.2, material: matEnemy });
+          body.addShape(shape);
+          body.position.set(pos.x, pos.y, pos.z);
+          body.velocity.set(
+            (Math.random() - 0.5) * 10,
+            Math.random() * 10,
+            (Math.random() - 0.5) * 10,
+          );
+          body.angularVelocity.set(
+            Math.random() * 10,
+            Math.random() * 10,
+            Math.random() * 10,
+          );
+
+          world.addBody(body);
+          debris.push({ mesh, body, life: 3 });
+        }
+      }
+
+      function takeDamage() {
+        state.hp -= 15;
+        $("#hp-val").text(Math.max(0, state.hp));
+        gsap.to("#dmg", { opacity: 1, duration: 0.1, yoyo: true, repeat: 1 });
+        gsap.to(camera.position, {
+          y: camera.position.y - 0.3,
+          duration: 0.1,
+          yoyo: true,
+          repeat: 1,
+        });
+        playSound(100, "sawtooth", 0.3);
+
+        if (state.hp <= 0) {
+          state.active = false;
+          controls.unlock();
+          $("h1").text("GAME OVER");
+          $("p").html(`Счет: ${state.score}<br>Подарки прорвались!`);
+          $("#start-btn").text("ЕЩЕ РАЗ");
+          $("#menu").fadeIn();
+        }
+      }
+
+      function resetGame() {
+        state.hp = 100;
+        state.score = 0;
+        $("#hp-val").text(100);
+        $("#score-val").text(0);
+
+        // Очистка
+        snowballs.forEach((s) => {
+          scene.remove(s.mesh);
+          world.removeBody(s.body);
+        });
+        enemies.forEach((e) => {
+          scene.remove(e.mesh);
+          world.removeBody(e.body);
+        });
+        debris.forEach((d) => {
+          scene.remove(d.mesh);
+          world.removeBody(d.body);
+        });
+        snowballs.length = 0;
+        enemies.length = 0;
+        debris.length = 0;
+
+        playerBody.position.set(0, 2, 0);
+        playerBody.velocity.set(0, 0, 0);
+        camera.position.set(0, 1.6, 0);
+      }
+
+      // --- INPUT ---
+      document.addEventListener("keydown", (e) => (keys[e.code] = true));
+      document.addEventListener("keyup", (e) => (keys[e.code] = false));
+      document.addEventListener("mousedown", () => {
+        if (state.active) shoot();
+      });
+
+      $("#start-btn").on("click", () => {
+        controls.lock();
+        if (state.hp <= 0) resetGame();
+      });
+      controls.addEventListener("lock", () => {
+        state.active = true;
+        $("#menu").fadeOut();
+      });
+      controls.addEventListener("unlock", () => {
+        if (state.hp > 0) {
+          state.active = false;
+          $("#menu").fadeIn();
+        }
+      });
+
+      // --- MAIN LOOP ---
+      const clock = new THREE.Clock();
+      let spawnTimer = 0;
+      const timeStep = 1 / 60;
+
+      function animate() {
+        requestAnimationFrame(animate);
+        const dt = Math.min(clock.getDelta(), 0.1);
+        const time = clock.elapsedTime;
+
+        if (state.active) {
+          // Физика
+          world.step(timeStep, dt, 3);
+
+          // Движение игрока
+          const speed = keys["ShiftLeft"] ? CFG.runSpeed : CFG.walkSpeed;
+          direction.set(0, 0, 0);
+          if (keys["KeyW"]) direction.z -= 1;
+          if (keys["KeyS"]) direction.z += 1;
+          if (keys["KeyA"]) direction.x -= 1;
+          if (keys["KeyD"]) direction.x += 1;
+          direction.normalize();
+
+          // Применяем движение относительно камеры
+          const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(
+            camera.quaternion,
+          );
+          forward.y = 0;
+          forward.normalize();
+          const right = new THREE.Vector3(1, 0, 0).applyQuaternion(
+            camera.quaternion,
+          );
+          right.y = 0;
+          right.normalize();
+
+          const moveVec = new THREE.Vector3();
+          moveVec.addScaledVector(forward, -direction.z);
+          moveVec.addScaledVector(right, direction.x);
+
+          playerBody.velocity.x = moveVec.x * speed;
+          playerBody.velocity.z = moveVec.z * speed;
+
+          // Синхронизация камеры с физикой
+          camera.position.copy(playerBody.position);
+          camera.position.y += 0.8; // Высота глаз
+
+          // Head Bobbing & Gun Sway
+          const isMoving =
+            Math.abs(playerBody.velocity.x) > 0.1 ||
+            Math.abs(playerBody.velocity.z) > 0.1;
+          if (isMoving) {
+            const bobFreq = keys["ShiftLeft"] ? 15 : 10;
+            camera.position.y += Math.sin(time * bobFreq) * 0.05;
+            gunGroup.position.y = -0.3 + Math.sin(time * bobFreq + 1) * 0.02;
+            gunGroup.position.x = 0.3 + Math.cos(time * bobFreq * 0.5) * 0.01;
+          } else {
+            gunGroup.position.lerp(new THREE.Vector3(0.3, -0.3, -0.5), dt * 5);
+          }
+
+          // Снежки
+          for (let i = snowballs.length - 1; i >= 0; i--) {
+            const s = snowballs[i];
+            s.mesh.position.copy(s.body.position);
+            s.mesh.quaternion.copy(s.body.quaternion);
+            s.life -= dt;
+
+            // Коллизия с врагами (проверка дистанции для простоты и надежности)
+            for (let j = enemies.length - 1; j >= 0; j--) {
+              const e = enemies[j];
+              if (s.body.position.distanceTo(e.body.position) < 1.2) {
+                createDebris(e.body.position, e.color);
+                scene.remove(e.mesh);
+                world.removeBody(e.body);
+                enemies.splice(j, 1);
+
+                // Удаляем снежок
+                scene.remove(s.mesh);
+                world.removeBody(s.body);
+                snowballs.splice(i, 1);
+
+                state.score++;
+                $("#score-val").text(state.score);
+                $("#crosshair").addClass("hit");
+                setTimeout(() => $("#crosshair").removeClass("hit"), 100);
+                playSound(600, "square", 0.1);
+                break;
+              }
+            }
+
+            if (s.life <= 0 || s.body.position.y < -5) {
+              scene.remove(s.mesh);
+              world.removeBody(s.body);
+              snowballs.splice(i, 1);
+            }
+          }
+
+          // Враги
+          spawnTimer += dt;
+          if (spawnTimer > CFG.spawnRate - Math.min(1, state.score * 0.01)) {
+            spawnEnemy();
+            spawnTimer = 0;
+          }
+
+          enemies.forEach((e) => {
+            e.mesh.position.copy(e.body.position);
+            e.mesh.quaternion.copy(e.body.quaternion);
+
+            // AI: двигаться к игроку
+            const toPlayer = new CANNON.Vec3();
+            playerBody.position.vsub(e.body.position, toPlayer);
+            toPlayer.normalize();
+            e.body.velocity.x = toPlayer.x * CFG.enemySpeed;
+            e.body.velocity.z = toPlayer.z * CFG.enemySpeed;
+
+            // Прыжок если застрял
+            if (Math.abs(e.body.velocity.y) < 0.1 && Math.random() < 0.02) {
+              e.body.velocity.y = 5;
+            }
+
+            if (e.body.position.distanceTo(playerBody.position) < 1.5) {
+              takeDamage();
+              scene.remove(e.mesh);
+              world.removeBody(e.body);
+              enemies.splice(enemies.indexOf(e), 1);
+            }
+          });
+
+          // Обломки
+          for (let i = debris.length - 1; i >= 0; i--) {
+            const d = debris[i];
+            d.mesh.position.copy(d.body.position);
+            d.mesh.quaternion.copy(d.body.quaternion);
+            d.life -= dt;
+            if (d.life <= 0) {
+              scene.remove(d.mesh);
+              world.removeBody(d.body);
+              debris.splice(i, 1);
+            }
+          }
+        }
+
+        // Снег (всегда)
+        const sp = snowSys.geometry.attributes.position;
+        for (let i = 1; i < sp.count * 3; i += 3) {
+          sp.array[i] -= dt * 4;
+          if (sp.array[i] < 0) sp.array[i] = 40;
+        }
+        sp.needsUpdate = true;
+        snowSys.position.copy(camera.position);
+        snowSys.position.y = 0;
+
+        renderer.render(scene, camera);
+      }
+
+      window.addEventListener("resize", () => {
+        camera.aspect = innerWidth / innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(innerWidth, innerHeight);
+      });
+
+      // Audio
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      function playSound(freq, type, dur) {
+        if (ctx.state === "suspended") ctx.resume();
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = type;
+        osc.frequency.setValueAtTime(freq, ctx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(
+          freq / 3,
+          ctx.currentTime + dur,
+        );
+        gain.gain.setValueAtTime(0.1, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + dur);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start();
+        osc.stop(ctx.currentTime + dur);
+      }
+
+      animate();
+    </script>
+  </body>
+</html>
